@@ -361,25 +361,41 @@ func (cdc *Codec) getTypeInfo_wlock(rt reflect.Type) (info *TypeInfo, err error)
 	// We do not use defer cdc.mtx.Unlock() here due to performance overhead of
 	// defer in go1.11 (and prior versions). Ensure new code paths unlock the
 	// mutex.
-	cdc.mtx.Lock() // requires wlock because we might set.
 
 	// Dereference pointer type.
 	for rt.Kind() == reflect.Ptr {
 		rt = rt.Elem()
 	}
 
+	rlock := true
+	cdc.mtx.RLock() // requires upgradable lock because we might set.
+
+AgainWithWLock:
 	info, ok := cdc.typeInfos[rt]
 	if !ok {
 		if rt.Kind() == reflect.Interface {
+			if rlock {
+				cdc.mtx.RUnlock()
+			} else {
+				cdc.mtx.Unlock()
+			}
 			err = fmt.Errorf("Unregistered interface %v", rt)
-			cdc.mtx.Unlock()
 			return
 		}
-
+		if rlock {
+			cdc.mtx.RUnlock()
+			rlock = false
+			cdc.mtx.Lock()
+			goto AgainWithWLock
+		}
 		info = cdc.newTypeInfoUnregistered(rt)
 		cdc.setTypeInfo_nolock(info)
 	}
-	cdc.mtx.Unlock()
+	if rlock {
+		cdc.mtx.RUnlock()
+	} else {
+		cdc.mtx.Unlock()
+	}
 	return info, nil
 }
 
