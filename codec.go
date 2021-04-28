@@ -368,19 +368,26 @@ func (cdc *Codec) getTypeInfo_wlock(rt reflect.Type) (info *TypeInfo, err error)
 	}
 
 	rlock := true
-	cdc.mtx.RLock() // requires upgradable lock because we might set.
+	if !cdc.sealed {
+		cdc.mtx.RLock() // requires upgradable lock because we might set.
+	}
 
 AgainWithWLock:
 	info, ok := cdc.typeInfos[rt]
 	if !ok {
 		if rt.Kind() == reflect.Interface {
-			if rlock {
-				cdc.mtx.RUnlock()
-			} else {
-				cdc.mtx.Unlock()
+			if !cdc.sealed {
+				if rlock {
+					cdc.mtx.RUnlock()
+				} else {
+					cdc.mtx.Unlock()
+				}
 			}
 			err = fmt.Errorf("Unregistered interface %v", rt)
 			return
+		}
+		if cdc.sealed {
+			panic(fmt.Sprintf("Unregistered type %v", rt))
 		}
 		if rlock {
 			cdc.mtx.RUnlock()
@@ -391,10 +398,12 @@ AgainWithWLock:
 		info = cdc.newTypeInfoUnregistered(rt)
 		cdc.setTypeInfo_nolock(info)
 	}
-	if rlock {
-		cdc.mtx.RUnlock()
-	} else {
-		cdc.mtx.Unlock()
+	if !cdc.sealed {
+		if rlock {
+			cdc.mtx.RUnlock()
+		} else {
+			cdc.mtx.Unlock()
+		}
 	}
 	return info, nil
 }
@@ -405,12 +414,16 @@ func (cdc *Codec) getTypeInfoFromPrefix_rlock(iinfo *TypeInfo, pb PrefixBytes) (
 	// We do not use defer cdc.mtx.Unlock() here due to performance overhead of
 	// defer in go1.11 (and prior versions). Ensure new code paths unlock the
 	// mutex.
-	cdc.mtx.RLock()
+	if !cdc.sealed {
+		cdc.mtx.RLock()
+	}
 
 	infos, ok := iinfo.Implementers[pb]
 	if !ok {
 		err = fmt.Errorf("unrecognized prefix bytes %X", pb)
-		cdc.mtx.RUnlock()
+		if !cdc.sealed {
+			cdc.mtx.RUnlock()
+		}
 		return
 	}
 	if len(infos) > 1 {
@@ -419,7 +432,9 @@ func (cdc *Codec) getTypeInfoFromPrefix_rlock(iinfo *TypeInfo, pb PrefixBytes) (
 		return
 	}
 	info = infos[0]
-	cdc.mtx.RUnlock()
+	if !cdc.sealed {
+		cdc.mtx.RUnlock()
+	}
 	return
 }
 
@@ -427,15 +442,21 @@ func (cdc *Codec) getTypeInfoFromDisfix_rlock(df DisfixBytes) (info *TypeInfo, e
 	// We do not use defer cdc.mtx.Unlock() here due to performance overhead of
 	// defer in go1.11 (and prior versions). Ensure new code paths unlock the
 	// mutex.
-	cdc.mtx.RLock()
+	if !cdc.sealed {
+		cdc.mtx.RLock()
+	}
 
 	info, ok := cdc.disfixToTypeInfo[df]
 	if !ok {
 		err = fmt.Errorf("unrecognized disambiguation+prefix bytes %X", df)
-		cdc.mtx.RUnlock()
+		if !cdc.sealed {
+			cdc.mtx.RUnlock()
+		}
 		return
 	}
-	cdc.mtx.RUnlock()
+	if !cdc.sealed {
+		cdc.mtx.RUnlock()
+	}
 	return
 }
 
@@ -443,15 +464,21 @@ func (cdc *Codec) getTypeInfoFromName_rlock(name string) (info *TypeInfo, err er
 	// We do not use defer cdc.mtx.Unlock() here due to performance overhead of
 	// defer in go1.11 (and prior versions). Ensure new code paths unlock the
 	// mutex.
-	cdc.mtx.RLock()
+	if !cdc.sealed {
+		cdc.mtx.RLock()
+	}
 
 	info, ok := cdc.nameToTypeInfo[name]
 	if !ok {
 		err = fmt.Errorf("unrecognized concrete type name %s", name)
-		cdc.mtx.RUnlock()
+		if !cdc.sealed {
+			cdc.mtx.RUnlock()
+		}
 		return
 	}
-	cdc.mtx.RUnlock()
+	if !cdc.sealed {
+		cdc.mtx.RUnlock()
+	}
 	return
 }
 
