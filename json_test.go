@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/tendermint/go-amino"
+	amino "github.com/tendermint/go-amino"
 )
 
 func registerTransports(cdc *amino.Codec) {
@@ -43,7 +43,7 @@ func TestMarshalJSON(t *testing.T) {
 		{&oneExportedField{A: "Z"}, `{"A":"Z"}`, ""},         // #6
 		{[]string{"a", "bc"}, `["a","bc"]`, ""},              // #7
 		{[]interface{}{"a", "bc", 10, 10.93, 1e3},
-			``, "Unregistered"}, // #8
+			``, "unregistered"}, // #8
 		{aPointerField{Foo: new(int), Name: "name"},
 			`{"Foo":"0","nm":"name"}`, ""}, // #9
 		{
@@ -91,7 +91,7 @@ func TestMarshalJSON(t *testing.T) {
 
 		// We don't yet support interface pointer registration i.e. `*interface{}`
 		{
-			interfacePtr("a"), "", "Unregistered interface interface {}",
+			interfacePtr("a"), "", "unregistered interface interface {}",
 		}, // #20
 		{&fp{"Foo", 10}, "<FP-MARSHALJSON>", ""}, // #21
 		{(*fp)(nil), "null", ""},                 // #22
@@ -172,24 +172,8 @@ type innerFP struct {
 }
 
 func TestUnmarshalMap(t *testing.T) {
-	binBytes := []byte(`dontcare`)
 	obj := new(map[string]int)
 	cdc := amino.NewCodec()
-	// Binary doesn't support decoding to a map...
-	// TODO: move out binary tests from json_test.go ...
-	assert.Panics(t, func() {
-		err := cdc.UnmarshalBinaryBare(binBytes, &obj)
-		assert.Fail(t, "should have paniced but got err: %v", err)
-	})
-	assert.Panics(t, func() {
-		err := cdc.UnmarshalBinaryBare(binBytes, obj)
-		assert.Fail(t, "should have paniced but got err: %v", err)
-	})
-	// ... nor encoding it.
-	assert.Panics(t, func() {
-		bz, err := cdc.MarshalBinaryBare(obj)
-		assert.Fail(t, "should have paniced but got bz: %X err: %v", bz, err)
-	})
 
 	invalidJSONMapBytes := []byte(`{"some_key": 2}`)
 	// we expect quoted values for javascript / JSON numbers:
@@ -208,37 +192,15 @@ func TestUnmarshalMap(t *testing.T) {
 }
 
 func TestUnmarshalFunc(t *testing.T) {
-	binBytes := []byte(`dontcare`)
 	jsonBytes := []byte(`"dontcare"`)
 	obj := func() {}
 	cdc := amino.NewCodec()
-	// Binary doesn't support decoding to a func...
-
-	err := cdc.UnmarshalBinaryLengthPrefixed(binBytes, &obj)
-	// on length prefixed we return an error:
-	assert.Error(t, err)
-
-	assert.Panics(t, func() {
-		err := cdc.UnmarshalBinaryBare(binBytes, &obj)
-		// panics with "unknown field type Func"
-		assert.Fail(t, "should have paniced but got err: %v", err)
-	})
-	assert.Panics(t, func() {
-		err := cdc.UnmarshalBinaryBare(binBytes, obj)
-		assert.Fail(t, "should have paniced but got err: %v", err)
-	})
-	// ... nor encoding it.
-	assert.Panics(t, func() {
-		bz, err := cdc.MarshalBinaryLengthPrefixed(obj)
-		assert.Fail(t, "should have paniced but got bz: %X err: %v", bz, err)
-	})
-	// JSON doesn't support decoding to a func...
 	assert.Panics(t, func() {
 		err := cdc.UnmarshalJSON(jsonBytes, &obj)
 		assert.Fail(t, "should have paniced but got err: %v", err)
 	})
 
-	err = cdc.UnmarshalJSON(jsonBytes, obj)
+	err := cdc.UnmarshalJSON(jsonBytes, obj)
 	// UnmarshalJSON expects a pointer
 	assert.Error(t, err)
 
@@ -259,7 +221,7 @@ func TestUnmarshalJSON(t *testing.T) {
 		wantErr string
 	}{
 		{ // #0
-			`null`, 2, nil, "expects a pointer",
+			`null`, 2, nil, "expected a pointer",
 		},
 		{ // #1
 			`null`, new(int), new(int), "",
@@ -298,7 +260,7 @@ func TestUnmarshalJSON(t *testing.T) {
 		},
 		{ // #9
 			`[1, "2", ["foo", "bar"]]`,
-			new([]interface{}), nil, "Unregistered",
+			new([]interface{}), nil, "unregistered interface interface {}",
 		},
 		{ // #10
 			`2.34`, floatPtr(2.34), nil, "float* support requires",
@@ -332,8 +294,10 @@ func TestUnmarshalJSON(t *testing.T) {
 			continue
 		}
 		if g, w := tt.in, tt.want; !reflect.DeepEqual(g, w) {
-			gb, _ := json.MarshalIndent(g, "", "  ")
-			wb, _ := json.MarshalIndent(w, "", "  ")
+			gb, err := json.MarshalIndent(g, "", "  ")
+			require.NoError(t, err)
+			wb, err := json.MarshalIndent(w, "", "  ")
+			require.NoError(t, err)
 			t.Errorf("#%d:\ngot:\n\t%#v\n(%s)\n\nwant:\n\t%#v\n(%s)", i, g, gb, w, wb)
 		}
 	}
@@ -395,13 +359,14 @@ func TestJSONCodecRoundTrip(t *testing.T) {
 			continue
 		}
 
-		if err := cdc.UnmarshalJSON(mBlob, tt.out); err != nil {
+		if err = cdc.UnmarshalJSON(mBlob, tt.out); err != nil {
 			t.Errorf("#%d: unexpected error after UnmarshalJSON: %v\nmBlob: %s", i, err, mBlob)
 			continue
 		}
 
 		// Now check that the input is exactly equal to the output
 		uBlob, err := cdc.MarshalJSON(tt.out)
+		assert.NoError(t, err)
 		if err := cdc.UnmarshalJSON(mBlob, tt.out); err != nil {
 			t.Errorf("#%d: unexpected error after second MarshalJSON: %v", i, err)
 			continue
@@ -430,9 +395,7 @@ type noExportedFields struct {
 }
 
 type oneExportedField struct {
-	_Foo int
-	A    string
-	b    string
+	A string
 }
 
 type aPointerField struct {
@@ -507,7 +470,8 @@ func interfacePtr(v interface{}) *interface{} {
 // Test to ensure that Amino codec's time encoding/decoding roundtrip
 // produces the same result as the standard library json's.
 func TestAminoJSONTimeEncodeDecodeRoundTrip(t *testing.T) {
-	loc, _ := time.LoadLocation("America/Los_Angeles")
+	loc, err := time.LoadLocation("America/Los_Angeles")
+	require.NoError(t, err)
 	din := time.Date(2008, 9, 15, 14, 13, 12, 11109876, loc).Round(time.Millisecond).UTC()
 
 	cdc := amino.NewCodec()

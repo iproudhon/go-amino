@@ -12,8 +12,8 @@ import (
 // Signed
 
 func DecodeInt8(bz []byte) (i int8, n int, err error) {
-	var i64 = int64(0)
-	i64, n, err = DecodeVarint(bz)
+
+	i64, n, err := DecodeVarint(bz)
 	if err != nil {
 		return
 	}
@@ -26,8 +26,8 @@ func DecodeInt8(bz []byte) (i int8, n int, err error) {
 }
 
 func DecodeInt16(bz []byte) (i int16, n int, err error) {
-	var i64 = int64(0)
-	i64, n, err = DecodeVarint(bz)
+
+	i64, n, err := DecodeVarint(bz)
 	if err != nil {
 		return
 	}
@@ -83,8 +83,7 @@ func DecodeByte(bz []byte) (b byte, n int, err error) {
 }
 
 func DecodeUint8(bz []byte) (u uint8, n int, err error) {
-	var u64 = uint64(0)
-	u64, n, err = DecodeUvarint(bz)
+	u64, n, err := DecodeUvarint(bz)
 	if err != nil {
 		return
 	}
@@ -96,8 +95,7 @@ func DecodeUint8(bz []byte) (u uint8, n int, err error) {
 	return
 }
 func DecodeUint16(bz []byte) (u uint16, n int, err error) {
-	var u64 = uint64(0)
-	u64, n, err = DecodeUvarint(bz)
+	u64, n, err := DecodeUvarint(bz)
 	if err != nil {
 		return
 	}
@@ -227,14 +225,14 @@ func DecodeTime(bz []byte) (t time.Time, n int, err error) {
 func decodeSeconds(bz *[]byte) (int64, int, error) {
 	// Optionally decode field number 1 and Typ3 (8Byte).
 	// only slide if we need to:
-	n := 0
+	var n int
 	fieldNum, typ, _n, err := decodeFieldNumberAndTyp3(*bz)
 	if err != nil {
 		return 0, n, err
 	}
-	if fieldNum == 1 && typ == Typ3_Varint {
+	switch {
+	case fieldNum == 1 && typ == Typ3Varint:
 		slide(bz, &n, _n)
-		_n = 0
 		sec, _n, err := DecodeUvarint(*bz)
 		if slide(bz, &n, _n) && err != nil {
 			return 0, n, err
@@ -248,10 +246,10 @@ func decodeSeconds(bz *[]byte) (int64, int, error) {
 		}
 		return res, n, err
 
-	} else if fieldNum == 2 && typ == Typ3_Varint {
+	case fieldNum == 2 && typ == Typ3Varint:
 		// skip: do not slide, no error, will read again
 		return 0, n, nil
-	} else {
+	default:
 		return 0, n, fmt.Errorf("expected field number 1 <Varint> or field number 2 <Varint> , got %v", fieldNum)
 	}
 }
@@ -262,15 +260,14 @@ func decodeNanos(bz *[]byte, n *int) (int32, error) {
 	if err != nil {
 		return 0, err
 	}
-	if fieldNum == 2 && typ == Typ3_Varint {
+	if fieldNum == 2 && typ == Typ3Varint {
 		slide(bz, n, _n)
-		_n = 0
 		nsec, _n, err := DecodeUvarint(*bz)
 		if slide(bz, n, _n) && err != nil {
 			return 0, err
 		}
 		// Validation check.
-		if nsec < 0 || maxNanos < nsec {
+		if maxNanos < nsec {
 			return 0, InvalidTimeErr(fmt.Sprintf("nanoseconds not in interval [0, 999999999] %v", nsec))
 		}
 		// this cast from uint64 to int32 is OK, due to above restriction:

@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/tendermint/go-amino"
+	amino "github.com/tendermint/go-amino"
 )
 
 func main() {
@@ -68,11 +68,11 @@ func main() {
 
 func scanAny(typ amino.Typ3, bz []byte, indent string) (s string, n int, err error) {
 	switch typ {
-	case amino.Typ3_Varint:
+	case amino.Typ3Varint:
 		s, n, err = scanVarint(bz, indent)
-	case amino.Typ3_8Byte:
+	case amino.Typ38Byte:
 		s, n, err = scan8Byte(bz, indent)
-	case amino.Typ3_ByteLength:
+	case amino.Typ3ByteLength:
 		s, n, err = scanByteLength(bz, indent)
 	case amino.Typ3_4Byte:
 		s, n, err = scan4Byte(bz, indent)
@@ -87,22 +87,22 @@ func scanVarint(bz []byte, indent string) (s string, n int, err error) {
 		err = fmt.Errorf("EOF while reading (U)Varint")
 	}
 	// First try Varint.
-	var i64, okI64 = int64(0), true
-	i64, n = binary.Varint(bz)
+	okI64 := true
+	i64, n := binary.Varint(bz)
 	if n <= 0 {
 		n = 0
 		okI64 = false
 	}
 	// Then try Uvarint.
-	var u64, okU64, _n = uint64(0), true, int(0)
-	u64, _n = binary.Uvarint(bz)
+	okU64 := true
+	u64, _n := binary.Uvarint(bz)
 	if n != _n {
 		n = 0
 		okU64 = false
 	}
 	// If neither work, return error.
 	if !okI64 && !okU64 {
-		err = fmt.Errorf("Invalid (u)varint")
+		err = fmt.Errorf("invalid (u)varint")
 		return
 	}
 	// s is the same either way.
@@ -115,12 +115,12 @@ func scanVarint(bz []byte, indent string) (s string, n int, err error) {
 		fmt.Printf("u64:%v", u64)
 	}
 	fmt.Print(")\n")
-	return
+	return s, n, err
 }
 
 func scan8Byte(bz []byte, indent string) (s string, n int, err error) {
 	if len(bz) < 8 {
-		err = errors.New("EOF while reading 8byte field.")
+		err = errors.New("while reading 8byte field, EOF was encountered")
 		return
 	}
 	n = 8
@@ -131,16 +131,15 @@ func scan8Byte(bz []byte, indent string) (s string, n int, err error) {
 
 func scanByteLength(bz []byte, indent string) (s string, n int, err error) {
 	// Read the length.
-	var length, l64, _n = int(0), uint64(0), int(0)
-	l64, _n = binary.Uvarint(bz)
+	l64, _n := binary.Uvarint(bz)
 	if n < 0 {
 		n = 0
 		err = errors.New("error decoding uvarint")
 		return
 	}
-	length = int(l64)
+	length := int(l64)
 	if length >= len(bz) {
-		err = errors.New("EOF while reading byte-length delimited.")
+		err = errors.New("while reading 8byte field, EOF was encountered")
 		return
 	}
 	s = Cyan(fmt.Sprintf("%X", bz[:_n]))
@@ -153,7 +152,11 @@ func scanByteLength(bz []byte, indent string) (s string, n int, err error) {
 }
 
 func scanStruct(bz []byte, indent string, isRoot bool) (s string, n int, err error) {
-	var _s, _n, typ = string(""), int(0), amino.Typ3(0x00)
+	var (
+		_s  string
+		_n  int
+		typ amino.Typ3
+	)
 	for {
 		if isRoot && len(bz) == 0 {
 			return
@@ -167,7 +170,6 @@ func scanStruct(bz []byte, indent string, isRoot bool) (s string, n int, err err
 			return
 		}
 	}
-	return
 }
 
 func scanFieldKey(bz []byte, indent string) (s string, typ amino.Typ3, n int, err error) {
@@ -179,7 +181,7 @@ func scanFieldKey(bz []byte, indent string) (s string, typ amino.Typ3, n int, er
 		return
 	}
 	typ = amino.Typ3(u64 & 0x07)
-	var number uint32 = uint32(u64 >> 3)
+	number := uint32(u64 >> 3)
 	s = fmt.Sprintf("%X", bz[:n])
 	fmt.Printf("%s%s @%v %v\n", indent, s, number, typ)
 	return
@@ -187,7 +189,7 @@ func scanFieldKey(bz []byte, indent string) (s string, typ amino.Typ3, n int, er
 
 func scan4Byte(bz []byte, indent string) (s string, n int, err error) {
 	if len(bz) < 4 {
-		err = errors.New("EOF while reading 4byte field.")
+		err = errors.New("while reading 8byte field, EOF was encountered")
 		return
 	}
 	n = 4
